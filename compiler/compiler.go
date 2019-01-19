@@ -274,3 +274,97 @@ func (p *Compiler) popOp() {
 	p.bytecode = append(p.bytecode, byte(opcode.STACK_POP))
 	p.bytecode = append(p.bytecode, byte(reg))
 }
+
+// exitOp terminates our interpreter
+func (p *Compiler) exitOp() {
+	p.bytecode = append(p.bytecode, byte(opcode.EXIT))
+}
+
+// incOp increments the contents of the given register
+func (p *Compiler) incOp() {
+	// looking for an identifier next.
+	if !p.expectPeek(token.IDENT) {
+		return
+	}
+
+	// Save the register we're storing to.
+	reg := p.getRegister(p.curToken.Literal)
+
+	p.bytecode = append(p.bytecode, opcode.INC_OP)
+	p.bytecode = append(p.bytecode, byte(reg))
+}
+
+// decOp decrements the contents of the given register
+func (p *Compiler) decOp() {
+	// looking for an identifier next.
+	if !p.expectPeek(token.IDENT) {
+		return
+	}
+
+	// Save the register we're storing to.
+	reg := p.getRegister(p.curToken.Literal)
+
+	p.bytecode = append(p.bytecode, opcode.DEC_OP)
+	p.bytecode = append(p.bytecode, byte(reg))
+}
+
+// randOp returns a random value
+func (p *Compiler) randOp() {
+	// looking for an identifier next.
+	if !p.expectPeek(token.IDENT) {
+		return
+	}
+
+	// Save the register we're storing to.
+	reg := p.getRegister(p.curToken.Literal)
+
+	p.bytecode = append(p.bytecode, opcode.INT_RANDOM)
+	p.bytecode = append(p.bytecode, byte(reg))
+}
+
+// retOp returns from a call
+func (p *Compiler) retOp() {
+	p.bytecode = append(p.bytecode, byte(opcode.STACK_RET))
+}
+
+// isStrOp tests if a register contains a string
+func (p *Compiler) isStrOp() {
+	// looking for an identifier next.
+	if !p.expectPeek(token.IDENT) {
+		return
+	}
+
+	// Save the register we're storing to.
+	reg := p.getRegister(p.curToken.Literal)
+
+	p.bytecode = append(p.bytecode, opcode.IS_STRING)
+	p.bytecode = append(p.bytecode, byte(reg))
+}
+
+// str2IntOp converts the given string-register to an int.
+func (p *Compiler) str2IntOp() {
+	// looking for an identifier next.
+	if !p.expectPeek(token.IDENT) {
+		return
+	}
+
+	// Save the register we're storing to.
+	reg := p.getRegister(p.curToken.Literal)
+
+	p.bytecode = append(p.bytecode, opcode.STRING_TOINT)
+	p.bytecode = append(p.bytecode, byte(reg))
+}
+
+// int2StrOp converts the given int-register to a string.
+func (p *Compiler) int2StrOp() {
+	// looking for an identifier next.
+	if !p.expectPeek(token.IDENT) {
+		return
+	}
+
+	// Save the register we're storing to.
+	reg := p.getRegister(p.curToken.Literal)
+
+	p.bytecode = append(p.bytecode, opcode.INT_TOSTRING)
+	p.bytecode = append(p.bytecode, byte(reg))
+}
