@@ -142,3 +142,29 @@ func (r *Register) SetString(v string) {
 func (r *Register) Type() string {
 	return (r.t)
 }
+
+//
+// Stack functions
+//
+
+// NewStack creates a new stack object.
+func NewStack() *Stack {
+	return &Stack{}
+}
+
+// Empty returns boolean, is the stack empty?
+func (s *Stack) Empty() bool {
+	return (len(s.entries) <= 0)
+}
+
+// Push add a value to the stack.
+func (s *Stack) Push(value int) {
+	s.entries = append(s.entries, value)
+}
+
+// Pop removes a value from the stack.
+func (s *Stack) Pop() int {
+	result := s.entries[0]
+	s.entries = append(s.entries[:0], s.entries[1:]...)
+	return (result)
+}
