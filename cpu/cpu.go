@@ -101,3 +101,44 @@ func trimQuotes(in string, c byte) string {
 	}
 	return in
 }
+
+//
+// Register functions
+//
+
+// GetInt retrieves the integer content of the given register.
+// If the register contains a string that is a fatal error.
+func (r *Register) GetInt() int {
+	if r.t != "int" {
+		fmt.Printf("Error: Attempting to call GetInt on a register holding a non-integer value.\n")
+		os.Exit(3)
+	}
+	return r.i
+}
+
+// SetInt stores the given integer in the register.
+func (r *Register) SetInt(v int) {
+	r.i = v
+	r.t = "int"
+}
+
+// GetString retrieves the string content of the given register.
+// If the register contains a integer that is a fatal error.
+func (r *Register) GetString() string {
+	if r.t != "string" {
+		fmt.Printf("Error: Attempting to call GetString on a register holding a non-string value.\n")
+		os.Exit(3)
+	}
+	return r.s
+}
+
+// SetString stores the given string in the register.
+func (r *Register) SetString(v string) {
+	r.s = v
+	r.t = "string"
+}
+
+// Type returns the type of a registers contents `int` vs. `string`.
+func (r *Register) Type() string {
+	return (r.t)
+}
