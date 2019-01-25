@@ -13,9 +13,15 @@
 package cpu
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"os"
+	"os/exec"
 	"regexp"
+	"strconv"
+	"time"
 )
 
 // Flags holds the CPU flags - of which we only have one.
@@ -167,4 +173,446 @@ func (s *Stack) Pop() int {
 	result := s.entries[0]
 	s.entries = append(s.entries[:0], s.entries[1:]...)
 	return (result)
+}
+
+//
+// CPU/VM functions
+//
+
+// NewCPU returns a new CPU object.
+func NewCPU() *CPU {
+	x := &CPU{}
+	x.Reset()
+	return x
+}
+
+// Reset sets the CPU into a known-good state, by setting the IP to zero.
+// and emptying all registers (i.e. setting them to zero too).
+func (c *CPU) Reset() {
+	for i := 0; i < 16; i++ {
+		c.regs[i].SetInt(0)
+	}
+	c.ip = 0
+	c.stack = NewStack()
+}
+
+// LoadFile loads the program from the named file into RAM.
+func (c *CPU) LoadFile(path string) {
+	// Ensure we reset our state.
+	c.Reset()
+
+	// Load the file.
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		fmt.Printf("Failed to read file: %s - %s\n", path, err.Error())
+		os.Exit(1)
+	}
+
+	if len(b) >= 0xFFFF {
+		fmt.Printf("Program too large for RAM!\n")
+		os.Exit(1)
+	}
+
+	// Copy contents of file to our memory region.
+	for i := 0; i < len(b); i++ {
+		c.mem[i] = b[i]
+	}
+}
+
+// LoadBytes populates the given program into RAM.
+func (c *CPU) LoadBytes(data []byte) {
+	// Ensure we reset our state.
+	c.Reset()
+
+	if len(data) >= 0xFFFF {
+		fmt.Printf("Program too large for RAM!\n")
+		os.Exit(1)
+	}
+
+	// Copy contents of file to our memory region.
+	for i := 0; i < len(data); i++ {
+		c.mem[i] = data[i]
+	}
+}
+
+// readString reads a string from the IP position
+// Strings are prefixed by their length (two-bytes).
+func (c *CPU) readString() string {
+	// Read the length of the string we expect.
+	len := c.read2Val()
+
+	// Now build up the body of the string.
+	s := ""
+	for i := 0; i < len; i++ {
+		s += string(c.mem[c.ip+i])
+	}
+
+	// Jump the IP over the length of the string.
+	c.ip += (len)
+	return s
+}
+
+// Read a two-byte number from the current IP.
+// i.e. This reads two bytes and returns a 16-bit value to the caller,
+// skipping over both bytes in the IP.
+func (c *CPU) read2Val() int {
+	l := int(c.mem[c.ip])
+	c.ip++
+	h := int(c.mem[c.ip])
+	c.ip++
+
+	val := l + h*256
+	return (val)
+}
+
+// Run launches our interpreter.
+func (c *CPU) Run() {
+	run := true
+	for run {
+		instruction := c.mem[c.ip]
+		debugPrintf("About to execute instruction %02X\n", instruction)
+
+		switch instruction {
+		case 0x00:
+			debugPrintf("EXIT\n")
+			run = false
+
+		case 0x01:
+			debugPrintf("INT_STORE\n")
+			// register
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+			val := c.read2Val()
+
+			debugPrintf("\tSet register %02X to %04X\n", reg, val)
+			c.regs[reg].SetInt(val)
+
+		case 0x02:
+			debugPrintf("INT_PRINT\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+
+			val := c.regs[reg].GetInt()
+			if val < 256 {
+				fmt.Printf("%02X", val)
+			} else {
+				fmt.Printf("%04X", val)
+			}
+			c.ip++
+
+		case 0x03:
+			debugPrintf("INT_TOSTRING\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+
+			// get value
+			i := c.regs[reg].GetInt()
+
+			// change from int to string
+			c.regs[reg].SetString(fmt.Sprintf("%d", i))
+
+			// next instruction
+			c.ip++
+
+		case 0x04:
+			debugPrintf("INT_RANDOM\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+
+			// New random source
+			s1 := rand.NewSource(time.Now().UnixNano())
+			r1 := rand.New(s1)
+
+			// New random number
+			c.regs[reg].SetInt(r1.Intn(0xffff))
+			c.ip++
+
+		case 0x10:
+			debugPrintf("JUMP\n")
+			c.ip++
+			addr := c.read2Val()
+			c.ip = addr
+
+		case 0x11:
+			debugPrintf("JUMP_Z\n")
+			c.ip++
+			addr := c.read2Val()
+			if c.flags.z {
+				c.ip = addr
+			}
+
+		case 0x12:
+			debugPrintf("JUMP_NZ\n")
+			c.ip++
+			addr := c.read2Val()
+			if !c.flags.z {
+				c.ip = addr
+			}
+
+		case 0x13:
+			debugPrintf("XOR\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+			c.regs[reg].SetInt(aVal ^ bVal)
+
+		case 0x21:
+			debugPrintf("ADD\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+			c.regs[reg].SetInt(aVal + bVal)
+
+		case 0x22:
+			debugPrintf("SUB\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+			c.regs[reg].SetInt(aVal - bVal)
+
+			// set the zero-flag if the result was zero or less
+			if c.regs[reg].i <= 0 {
+				c.flags.z = true
+			}
+
+		case 0x23:
+			debugPrintf("MUL\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+			c.regs[reg].SetInt(aVal * bVal)
+
+		case 0x24:
+			debugPrintf("DIV\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+
+			if bVal == 0 {
+				fmt.Printf("Attempting to divide by zero - denying\n")
+				os.Exit(3)
+			}
+			c.regs[reg].SetInt(aVal / bVal)
+
+		case 0x25:
+			debugPrintf("INC\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+			c.regs[reg].SetInt(c.regs[reg].GetInt() + 1)
+			// bump past that
+			c.ip++
+
+		case 0x26:
+			debugPrintf("DEC\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+			c.regs[reg].SetInt(c.regs[reg].GetInt() - 1)
+			// bump past that
+			c.ip++
+
+		case 0x27:
+			debugPrintf("AND\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+			c.regs[reg].SetInt(aVal & bVal)
+
+		case 0x28:
+			debugPrintf("OR\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetInt()
+			bVal := c.regs[b].GetInt()
+			c.regs[reg].SetInt(aVal | bVal)
+
+		case 0x30:
+			debugPrintf("STORE_STRING\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+			// bump past that to the length + string
+			c.ip++
+			// read it
+			str := c.readString()
+			debugPrintf("\tRead String: '%s'\n", str)
+			// store the string
+			c.regs[reg].SetString(str)
+
+		case 0x31:
+			debugPrintf("PRINT_STRING\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+			fmt.Printf("%s", c.regs[reg].GetString())
+			c.ip++
+
+		case 0x32:
+			debugPrintf("STRING_CONCAT\n")
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+			a := c.mem[c.ip]
+			c.ip++
+			b := c.mem[c.ip]
+			c.ip++
+
+			// store result
+			aVal := c.regs[a].GetString()
+			bVal := c.regs[b].GetString()
+			c.regs[reg].SetString(aVal + bVal)
+
+		case 0x33:
+			debugPrintf("SYSTEM\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+			c.ip++
+
+			// run the command
+			toExec := splitCommand(c.regs[reg].GetString())
+			cmd := exec.Command(toExec[0], toExec[1:]...)
+
+			var out bytes.Buffer
+			var err bytes.Buffer
+			cmd.Stdout = &out
+			cmd.Stderr = &err
+			cmd.Run()
+
+			// stdout
+			fmt.Printf("%s", out.String())
+			// stderr - if err is non-empty
+			if len(err.String()) > 0 {
+				fmt.Printf("%s", err.String())
+			}
+
+		case 0x34:
+			debugPrintf("STRING_TOINT\n")
+			// register
+			c.ip++
+			reg := c.mem[c.ip]
+
+			// get value
+			s := c.regs[reg].GetString()
+			i, err := strconv.Atoi(s)
+			if err == nil {
+				c.regs[reg].SetInt(i)
+			} else {
+				fmt.Printf("Failed to convert '%s' to int: %s", s, err.Error())
+				os.Exit(3)
+			}
+
+			// next instruction
+			c.ip++
+
+		case 0x40:
+			debugPrintf("CMP_REG\n")
+			c.ip++
+			r1 := int(c.mem[c.ip])
+			c.ip++
+			r2 := int(c.mem[c.ip])
+			c.ip++
+
+			c.flags.z = false
+
+			switch c.regs[r1].Type() {
+			case "int":
+				if c.regs[r1].GetInt() == c.regs[r2].GetInt() {
+					c.flags.z = true
+				}
+			case "string":
+				if c.regs[r1].GetString() == c.regs[r2].GetString() {
+					c.flags.z = true
+				}
+			}
+
+		case 0x41:
+			debugPrintf("CMP_IMMEDIATE\n")
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+			val := c.read2Val()
+
+			if c.regs[reg].Type() == "int" && c.regs[reg].GetInt() == val {
+				c.flags.z = true
+			} else {
+				c.flags.z = false
+			}
+
+		case 0x42:
+			debugPrintf("CMP_STR\n")
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+
+			str := c.readString()
+
+			if c.regs[reg].Type() == "string" && c.regs[reg].GetString() == str {
+				c.flags.z = true
+			} else {
+				c.flags.z = false
+			}
+
+		}
+	}
 }
