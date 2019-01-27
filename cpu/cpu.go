@@ -613,6 +613,29 @@ func (c *CPU) Run() {
 				c.flags.z = false
 			}
 
+		case 0x43:
+			debugPrintf("IS_STRING\n")
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+
+			if c.regs[reg].Type() == "string" {
+				c.flags.z = true
+			} else {
+				c.flags.z = false
+			}
+
+		case 0x44:
+			debugPrintf("IS_INT\n")
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+
+			if c.regs[reg].Type() == "int" {
+				c.flags.z = true
+			} else {
+				c.flags.z = false
+			}
 		}
 	}
 }
