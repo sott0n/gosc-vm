@@ -636,6 +636,51 @@ func (c *CPU) Run() {
 			} else {
 				c.flags.z = false
 			}
+
+		case 0x50:
+			debugPrintf("NOP\n")
+			c.ip++
+
+		case 0x51:
+			debugPrintf("STORE\n")
+			c.ip++
+			dst := int(c.mem[c.ip])
+			c.ip++
+			src := int(c.mem[c.ip])
+			c.ip++
+
+			c.regs[src] = c.regs[dst]
+
+		case 0x60:
+			debugPrintf("PEEK\n")
+			c.ip++
+			result := int(c.mem[c.ip])
+			c.ip++
+			src := int(c.mem[c.ip])
+
+			// get the address from the src register contents.
+			addr := c.regs[src].i
+
+			// store the contents of the given address.
+			c.regs[result].SetInt(int(c.mem[addr]))
+			c.ip++
+
+		case 0x61:
+			debugPrintf("POKE\n")
+			c.ip++
+			src := int(c.mem[c.ip])
+			c.ip++
+
+			dst := int(c.mem[c.ip])
+			c.ip++
+
+			// So the destination will contain an address
+			// put the contents of the source to that.
+			addr := c.regs[dst].i
+			val := c.regs[src].i
+
+			debugPrintf("Writing %02X to %04X\n", val, addr)
+			c.mem[addr] = byte(val)
 		}
 	}
 }
