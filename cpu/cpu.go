@@ -681,6 +681,90 @@ func (c *CPU) Run() {
 
 			debugPrintf("Writing %02X to %04X\n", val, addr)
 			c.mem[addr] = byte(val)
+
+		case 0x62:
+			debugPrintf("MEMCPY\n")
+			c.ip++
+			dst := int(c.mem[c.ip])
+			c.ip++
+
+			src := int(c.mem[c.ip])
+			c.ip++
+
+			len := int(c.mem[c.ip])
+			c.ip++
+
+			// get the addresses from the registers
+			src_addr := c.regs[src].GetInt()
+			dst_addr := c.regs[dst].GetInt()
+			length := c.regs[len].GetInt()
+
+			i := 0
+			for i < length {
+				if dst_addr >= 0xFFFF {
+					dst_addr = 0
+				}
+				if src_addr >= 0xFFFF {
+					src_addr = 0
+				}
+
+				c.mem[dst_addr] = c.mem[src_addr]
+				dst_addr += 1
+				src_addr += 1
+				i += 1
+			}
+
+		case 0x70:
+			debugPrintf("PUSH\n")
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+
+			// Store the value in the register on stack
+			c.stack.Push(c.regs[reg].GetInt())
+
+		case 0x71:
+			debugPrintf("POP\n")
+			c.ip++
+			reg := int(c.mem[c.ip])
+			c.ip++
+
+			if c.stack.Empty() {
+				fmt.Printf("Stack Underflow!\n")
+				os.Exit(1)
+			}
+			// Store the value in the register on stack
+			c.regs[reg].SetInt(c.stack.Pop())
+
+		case 0x72:
+			debugPrintf("RET\n")
+
+			// Ensure our stack isn't empty
+			if c.stack.Empty() {
+				fmt.Printf("Stack Underflow!\n")
+				os.Exit(1)
+			}
+
+			addr := c.stack.Pop()
+			c.ip = addr
+
+		case 0x73:
+			debugPrintf("CALL\n")
+			c.ip++
+
+			addr := c.read2Val()
+
+			c.stack.Push(c.ip)
+			c.ip = addr
+
+		default:
+			fmt.Printf("Unrecognized/Unimplemented opcode %02X at IP %04X\n", instruction, c.ip)
+			os.Exit(1)
+		}
+
+		// Ensure our instruction-pointer wraps around.
+		if c.ip >= 0xFFFF {
+			c.ip = 0
 		}
 	}
 }
