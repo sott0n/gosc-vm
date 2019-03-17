@@ -18,7 +18,7 @@ type executeCmd struct {
 func (*executeCmd) Name() string     { return "execute" }
 func (*executeCmd) Synopsis() string { return "Executed a simple.vm program." }
 func (*executeCmd) Usage() string {
-	return `execute:
+	return `execute :
   Execute the bytecodes contained in the given input file.
 `
 }

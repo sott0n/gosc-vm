@@ -22,8 +22,8 @@ func (*runCmd) Name() string     { return "run" }
 func (*runCmd) Synopsis() string { return "Run the given source program." }
 func (*runCmd) Usage() string {
 	return `run :
-	The run sub-command compiles the given source program, and then executes
-	it immediately.
+  The run sub-command compiles the given source program, and then executes
+  it immediately.
 `
 }
 
